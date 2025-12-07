@@ -1,28 +1,40 @@
-name: Run Video Uploader
+name: Video Uploader
 
 on:
-  # Allows you to run this workflow manually from the Actions tab
+  # Manual trigger
   workflow_dispatch:
 
-  # Runs the job every 6 hours (adjust as needed)
+  # Scheduled runs - every 6 hours
   schedule:
     - cron: '0 */6 * * *'
 
 jobs:
-  run-script:
+  upload:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and Run Docker Container
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
         run: |
-          docker build -t uploader-image .
-          docker run --rm \
-            -e GOOGLE_SERVICE_ACCOUNT_JSON='${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' \
-            -e GOOGLE_SHEET_ID='${{ secrets.GOOGLE_SHEET_ID }}' \
-            -e GOOGLE_DRIVE_FOLDER_ID='${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}' \
-            -e TWO_CAPTCHA_API_KEY='${{ secrets.TWO_CAPTCHA_API_KEY }}' \
-            -e WEBSITE_USERNAME='${{ secrets.WEBSITE_USERNAME }}' \
-            -e WEBSITE_PASSWORD='${{ secrets.WEBSITE_PASSWORD }}' \
-            uploader-image
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run uploader
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
+          WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
+          TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
+        run: python upload_videos.py
