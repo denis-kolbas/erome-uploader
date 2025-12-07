@@ -10,3 +10,11 @@ captcha.png
 *.log
 .vscode/
 .idea/
+# Se
+nsitive proxy and session data
+proxies.txt
+storage_state.json
+save_login_state.py
+screenshot_*.png
+before_submit_attempt_*.png
+login_failed.png

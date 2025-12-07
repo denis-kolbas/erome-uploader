@@ -5,8 +5,7 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
-# NEW: Import stealth
-from playwright_stealth import stealth_sync
+from playwright_stealth import stealth
 from twocaptcha import TwoCaptcha
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -214,8 +213,8 @@ def _upload_video_impl(row_data, downloaded_files):
         
         page = context.new_page()
         
-        # --- CRITICAL: Apply Stealth ---
-        stealth_sync(page)
+        # Apply stealth to avoid detection
+        stealth(page)
         print("✓ Stealth mode applied")
         
         # Start Trace
