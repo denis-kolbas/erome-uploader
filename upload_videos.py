@@ -457,9 +457,24 @@ def _upload_video_impl(row_data, downloaded_files):
         wait_interval = 0.5
         elapsed = 0
         navigation_success = False
+        popup_checked = False
         
         while elapsed < max_wait:
             current_url = page.url
+            
+            # Check for rules popup (appears after clicking upload button)
+            if not popup_checked or elapsed % 2 == 0:  # Check initially and every 2 seconds
+                try:
+                    rules_modal = page.locator('#rules:visible')
+                    if rules_modal.count() > 0:
+                        print("⚠️ Rules popup detected, closing it...")
+                        take_screenshot(page, "popup_rules_modal")
+                        page.locator('#rules button[data-dismiss="modal"]').click()
+                        time.sleep(0.5)
+                        print("✓ Rules popup closed")
+                        popup_checked = True
+                except Exception as e:
+                    pass  # Popup not present or already closed
             
             # Check if we've navigated to the upload/edit page
             if current_url != initial_url and '/a/' in current_url:
@@ -493,20 +508,18 @@ def _upload_video_impl(row_data, downloaded_files):
         page.wait_for_load_state('domcontentloaded')
         time.sleep(2)
         
-        take_screenshot(page, "10_upload_page_loaded")
-        print(f"✓ Successfully on upload page: {page.url}")
-        
-        # Handle rules modal if present
+        # Final check for rules modal (in case it appears after navigation)
         try:
             rules_modal = page.locator('#rules:visible')
             if rules_modal.count() > 0:
-                print("Closing rules modal...")
-                take_screenshot(page, "11_rules_modal")
+                print("⚠️ Rules modal still present, closing again...")
                 page.locator('#rules button[data-dismiss="modal"]').click()
                 time.sleep(0.5)
-                take_screenshot(page, "12_rules_modal_closed")
         except Exception as e:
-            print(f"⚠️ Error checking rules modal: {e}")
+            pass  # Modal not present
+        
+        take_screenshot(page, "10_upload_page_loaded")
+        print(f"✓ Successfully on upload page: {page.url}")
 
         # Update title
         print("\n" + "="*60)
