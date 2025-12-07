@@ -260,7 +260,11 @@ def _upload_video_impl(row_data, downloaded_files):
                 
                 print(f"  Filling captcha: {captcha_solution}")
                 page.fill('input[name="captcha"]', captcha_solution)
-                time.sleep(0.5)
+                time.sleep(1)
+                
+                # Take screenshot before submitting
+                page.screenshot(path=f'before_submit_attempt_{attempt}.png')
+                print(f"  Screenshot saved: before_submit_attempt_{attempt}.png")
                 
                 print("  Looking for submit button...")
                 submit_button = page.locator('button[type="submit"].btn.btn-pink')
@@ -269,18 +273,37 @@ def _upload_video_impl(row_data, downloaded_files):
                     raise Exception("Login button not found on page")
                 
                 print("  Clicking submit button...")
-                submit_button.click()
-                print("  Waiting for page to load...")
-                page.wait_for_load_state('networkidle')
+                # Wait for navigation after clicking submit
+                try:
+                    with page.expect_navigation(timeout=15000):
+                        submit_button.click()
+                    print("  ✓ Navigation occurred after submit")
+                except Exception as e:
+                    print(f"  ⚠️ No navigation after submit: {e}")
+                
                 time.sleep(3)
                 
                 print(f"  After login URL: {page.url}")
                 
                 # Check for error messages
-                error_msg = page.locator('.alert-danger, .error').first
+                error_msg = page.locator('.alert-danger, .alert-warning, .error, .text-danger').first
                 if error_msg.count() > 0:
                     error_text = error_msg.text_content()
                     print(f"  ✗ Error message on page: {error_text}")
+                
+                # Check if still on login form
+                if page.locator('input#email.form-control').count() > 0:
+                    print("  ⚠️ Still seeing login form fields")
+                    # Get page content for debugging
+                    page_title = page.title()
+                    print(f"  Page title: {page_title}")
+                    
+                    # Check if form has validation errors
+                    validation_errors = page.locator('.invalid-feedback, .form-error').all()
+                    if validation_errors:
+                        for err in validation_errors:
+                            if err.is_visible():
+                                print(f"  Validation error: {err.text_content()}")
                 
                 # Verify login was successful
                 upload_btn_count = page.locator("a#upload-album, a[href*='/upload']").count()

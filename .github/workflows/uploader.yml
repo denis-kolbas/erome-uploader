@@ -64,5 +64,6 @@ jobs:
           path: |
             captcha.png
             login_failed.png
+            before_submit_attempt_*.png
           retention-days: 7
           if-no-files-found: ignore
