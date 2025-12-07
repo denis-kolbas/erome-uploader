@@ -1,0 +1,28 @@
+name: Run Video Uploader
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+  # Runs the job every 6 hours (adjust as needed)
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and Run Docker Container
+        run: |
+          docker build -t uploader-image .
+          docker run --rm \
+            -e GOOGLE_SERVICE_ACCOUNT_JSON='${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' \
+            -e GOOGLE_SHEET_ID='${{ secrets.GOOGLE_SHEET_ID }}' \
+            -e GOOGLE_DRIVE_FOLDER_ID='${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}' \
+            -e TWO_CAPTCHA_API_KEY='${{ secrets.TWO_CAPTCHA_API_KEY }}' \
+            -e WEBSITE_USERNAME='${{ secrets.WEBSITE_USERNAME }}' \
+            -e WEBSITE_PASSWORD='${{ secrets.WEBSITE_PASSWORD }}' \
+            uploader-image

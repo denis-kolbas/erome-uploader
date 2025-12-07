@@ -1,0 +1,5 @@
+python-dotenv
+playwright
+2captcha-python
+google-api-python-client
+google-auth-oauthlib
