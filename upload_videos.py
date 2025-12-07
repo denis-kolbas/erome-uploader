@@ -17,6 +17,27 @@ SHEET_NAME = "calendar"
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 VIDEO_DOWNLOAD_PATH = "/tmp/Ero/videos"
 
+# Proxy configuration - Webshare.io rotating proxy
+PROXY_ENABLED = os.getenv("PROXY_ENABLED", "true").lower() == "true"
+PROXY_HOST = os.getenv("PROXY_HOST", "p.webshare.io")
+PROXY_PORT = os.getenv("PROXY_PORT", "80")
+PROXY_USERNAME = os.getenv("PROXY_USERNAME", "mhcbvnkx-rotate")
+PROXY_PASSWORD = os.getenv("PROXY_PASSWORD", "wsramyu1qzh0")
+
+def get_proxy_config():
+    """Get proxy configuration for Playwright"""
+    if not PROXY_ENABLED:
+        print("⚠️ Proxy disabled")
+        return None
+    
+    proxy = {
+        'server': f'http://{PROXY_HOST}:{PROXY_PORT}',
+        'username': PROXY_USERNAME,
+        'password': PROXY_PASSWORD
+    }
+    print(f"✓ Using rotating proxy: {PROXY_HOST}:{PROXY_PORT}")
+    return proxy
+
 # Validate required environment variables
 required_vars = {
     "GOOGLE_SERVICE_ACCOUNT_JSON": SERVICE_ACCOUNT_JSON,
@@ -177,6 +198,9 @@ def _upload_video_impl(row_data, downloaded_files):
         if field not in row_data or not row_data[field]:
             raise Exception(f"Missing required field: {field}")
     
+    # Get proxy configuration
+    proxy = get_proxy_config()
+    
     with sync_playwright() as p:
         brave_path = find_brave_executable()
         browser_args = [
@@ -195,16 +219,23 @@ def _upload_video_impl(row_data, downloaded_files):
             user_data_dir = "/tmp/brave-profile"
             browser_args += ["--brave-shields-up","--no-default-browser-check","--no-first-run"]
 
-        browser = p.chromium.launch_persistent_context(
-            user_data_dir=user_data_dir,
-            executable_path=brave_path if brave_path else None,
-            headless=headless_mode,
-            args=browser_args,
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
-            locale="en-US",
-            timezone_id="America/New_York",
-        )
+        # Browser context options
+        context_options = {
+            "user_data_dir": user_data_dir,
+            "executable_path": brave_path if brave_path else None,
+            "headless": headless_mode,
+            "args": browser_args,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "viewport": {"width": 1920, "height": 1080},
+            "locale": "en-US",
+            "timezone_id": "America/New_York",
+        }
+        
+        # Add proxy if available
+        if proxy:
+            context_options["proxy"] = proxy
+        
+        browser = p.chromium.launch_persistent_context(**context_options)
 
         page = browser.new_page()
         
