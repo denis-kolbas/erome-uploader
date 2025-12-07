@@ -435,21 +435,73 @@ def _upload_video_impl(row_data, downloaded_files):
         print("="*60)
         
         # Find the upload button
-        upload_button = page.locator("a#upload-album, a[href*='/upload']").first
+        print("Looking for upload button...")
+        
+        # Try to find all possible upload buttons
+        upload_selectors = [
+            "a#upload-album",
+            "a[href*='/upload']",
+            "a[href='/user/upload']",
+            ".upload-button",
+            "button:has-text('Upload')",
+        ]
+        
+        upload_button = None
+        for selector in upload_selectors:
+            try:
+                btn = page.locator(selector).first
+                if btn.count() > 0:
+                    print(f"✓ Found upload button with selector: {selector}")
+                    upload_button = btn
+                    break
+            except:
+                continue
+        
+        if not upload_button:
+            take_screenshot(page, "ERROR_no_upload_button")
+            # Get all links on the page for debugging
+            all_links = page.locator('a').all()
+            print(f"Total links on page: {len(all_links)}")
+            for i, link in enumerate(all_links[:10]):  # Show first 10
+                try:
+                    href = link.get_attribute('href')
+                    text = link.text_content()
+                    print(f"  Link {i}: href={href}, text={text}")
+                except:
+                    pass
+            raise Exception("Upload button not found on page")
+        
         upload_button.wait_for(state='visible', timeout=10000)
-        print(f"Upload button found, current URL: {page.url}")
+        print(f"Upload button is visible, current URL: {page.url}")
+        
+        # Get button details for debugging
+        try:
+            btn_href = upload_button.get_attribute('href')
+            btn_text = upload_button.text_content()
+            btn_id = upload_button.get_attribute('id')
+            btn_class = upload_button.get_attribute('class')
+            print(f"Button details: href={btn_href}, text={btn_text}, id={btn_id}, class={btn_class}")
+        except Exception as e:
+            print(f"Could not get button details: {e}")
         
         # Scroll to button to ensure it's in view
         upload_button.scroll_into_view_if_needed()
         time.sleep(0.5)
+        take_screenshot(page, "before_upload_click")
         
         # Store the current URL to detect changes
         initial_url = page.url
         
         # Click the button (without waiting for navigation)
         print("Clicking upload button...")
-        upload_button.click()
-        print("✓ Button clicked")
+        try:
+            upload_button.click()
+            print("✓ Button clicked")
+        except Exception as e:
+            print(f"⚠️ Click failed: {e}")
+            print("Trying force click...")
+            upload_button.click(force=True)
+            print("✓ Force click completed")
         
         # Wait for URL to change (polling approach)
         print("Waiting for navigation to complete...")
