@@ -433,15 +433,35 @@ def _upload_video_impl(row_data, downloaded_files):
         upload_button = page.locator("a#upload-album, a[href*='/upload']")
         upload_button.wait_for(state='visible', timeout=10000)
         
+        # Get the href to see where it's going
+        upload_href = upload_button.get_attribute('href')
+        print(f"Upload button href: {upload_href}")
+        
         # Click and wait for navigation
         try:
             with page.expect_navigation(timeout=15000):
                 upload_button.click()
-            print("✓ Navigated to upload page")
+            print("✓ Navigation occurred")
         except Exception as e:
-            print(f"⚠️ Navigation timeout (might be okay): {e}")
+            print(f"⚠️ Navigation timeout: {e}")
+            # Try direct navigation if click didn't work
+            if upload_href:
+                print(f"Trying direct navigation to: {upload_href}")
+                page.goto(f"https://www.erome.com{upload_href}", wait_until='networkidle')
         
         time.sleep(2)
+        
+        # Check if we're on the upload/edit page
+        current_url = page.url
+        print(f"Current URL after navigation: {current_url}")
+        
+        if '/a/' not in current_url and '/upload' not in current_url:
+            print("⚠️ Not on upload page, trying direct navigation...")
+            page.goto('https://www.erome.com/upload', wait_until='networkidle')
+            time.sleep(2)
+            current_url = page.url
+            print(f"URL after direct navigation: {current_url}")
+        
         take_screenshot(page, "10_upload_page_loaded")
         
         # Wait for page to be ready
