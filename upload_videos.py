@@ -179,7 +179,12 @@ def _upload_video_impl(row_data, downloaded_files):
     
     with sync_playwright() as p:
         brave_path = find_brave_executable()
-        browser_args = ["--disable-popup-blocking","--disable-blink-features=AutomationControlled"]
+        browser_args = [
+            "--disable-popup-blocking",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-sandbox"
+        ]
         user_data_dir = "/tmp/chrome-profile"
         
         # Use headless mode in CI/production, headed locally
@@ -195,6 +200,10 @@ def _upload_video_impl(row_data, downloaded_files):
             executable_path=brave_path if brave_path else None,
             headless=headless_mode,
             args=browser_args,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080},
+            locale="en-US",
+            timezone_id="America/New_York",
         )
 
         page = browser.new_page()
