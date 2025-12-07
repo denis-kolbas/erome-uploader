@@ -17,44 +17,18 @@ SHEET_NAME = "calendar"
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 VIDEO_DOWNLOAD_PATH = "/tmp/Ero/videos"
 
-# Browser state configuration (for skipping login)
-BROWSER_STATE = os.getenv("BROWSER_STATE")  # JSON string from GitHub secret
-BROWSER_STATE_FILE = "storage_state.json"  # Local file
-
-# Proxy configuration - Webshare.io rotating proxy (optional, only needed for login)
-PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() == "true"
+# Proxy configuration - Webshare.io rotating proxy
+PROXY_ENABLED = os.getenv("PROXY_ENABLED", "true").lower() == "true"
 PROXY_HOST = os.getenv("PROXY_HOST", "p.webshare.io")
 PROXY_PORT = os.getenv("PROXY_PORT", "80")
 PROXY_USERNAME = os.getenv("PROXY_USERNAME", "mhcbvnkx-rotate")
 PROXY_PASSWORD = os.getenv("PROXY_PASSWORD", "wsramyu1qzh0")
 
-def get_browser_state():
-    """Get browser state from environment or file"""
-    # First check if we have it as an environment variable (GitHub Actions)
-    if BROWSER_STATE:
-        print("✓ Using browser state from environment variable")
-        try:
-            state = json.loads(BROWSER_STATE)
-            # Save to temp file for Playwright
-            temp_state_file = "/tmp/storage_state.json"
-            with open(temp_state_file, 'w') as f:
-                json.dump(state, f)
-            return temp_state_file
-        except json.JSONDecodeError as e:
-            print(f"⚠️ Failed to parse BROWSER_STATE: {e}")
-            return None
-    
-    # Check for local file
-    if os.path.exists(BROWSER_STATE_FILE):
-        print(f"✓ Using browser state from {BROWSER_STATE_FILE}")
-        return BROWSER_STATE_FILE
-    
-    print("⚠️ No browser state found. Will need to login.")
-    return None
-
 def get_proxy_config():
     """Get proxy configuration for Playwright"""
+    print(f"Proxy enabled: {PROXY_ENABLED}")
     if not PROXY_ENABLED:
+        print("⚠️ Proxy is DISABLED - running without proxy")
         return None
     
     proxy = {
@@ -62,7 +36,7 @@ def get_proxy_config():
         'username': PROXY_USERNAME,
         'password': PROXY_PASSWORD
     }
-    print(f"✓ Using rotating proxy: {PROXY_HOST}:{PROXY_PORT}")
+    print(f"✓ Using rotating proxy: {PROXY_HOST}:{PROXY_PORT} with user: {PROXY_USERNAME}")
     return proxy
 
 # Validate required environment variables
@@ -247,9 +221,12 @@ def _upload_video_impl(row_data, downloaded_files):
         if field not in row_data or not row_data[field]:
             raise Exception(f"Missing required field: {field}")
     
-    # Get browser state and proxy configuration
-    storage_state_path = get_browser_state()
+    # Get proxy configuration
+    print("\n" + "="*60)
+    print("Proxy Configuration")
+    print("="*60)
     proxy = get_proxy_config()
+    print("="*60 + "\n")
     
     with sync_playwright() as p:
         brave_path = find_brave_executable()
@@ -259,73 +236,40 @@ def _upload_video_impl(row_data, downloaded_files):
             "--disable-dev-shm-usage",
             "--no-sandbox"
         ]
+        user_data_dir = "/tmp/chrome-profile"
         
         # Use headless mode in CI/production, headed locally
         is_ci = os.getenv('CI') is not None or os.getenv('GITHUB_ACTIONS') is not None
         headless_mode = is_ci
         
         if brave_path:
+            user_data_dir = "/tmp/brave-profile"
             browser_args += ["--brave-shields-up","--no-default-browser-check","--no-first-run"]
 
-        # If we have storage state, use regular context (not persistent)
-        # This allows us to load cookies without a user data dir
-        if storage_state_path:
-            print("✓ Using stored session - skipping login")
-            browser = p.chromium.launch(
-                executable_path=brave_path if brave_path else None,
-                headless=headless_mode,
-                args=browser_args,
-            )
-            
-            context_options = {
-                "storage_state": storage_state_path,
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                "viewport": {"width": 1920, "height": 1080},
-                "locale": "en-US",
-                "timezone_id": "America/New_York",
-            }
-            
-            # Add proxy if available (only needed for login, but doesn't hurt)
-            if proxy:
-                context_options["proxy"] = proxy
-            
-            context = browser.new_context(**context_options)
-            page = context.new_page()
-            skip_login = True
-        else:
-            # No storage state - use persistent context and login
-            print("⚠️ No stored session - will need to login")
-            user_data_dir = "/tmp/brave-profile" if brave_path else "/tmp/chrome-profile"
-            
-            context_options = {
-                "user_data_dir": user_data_dir,
-                "executable_path": brave_path if brave_path else None,
-                "headless": headless_mode,
-                "args": browser_args,
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                "viewport": {"width": 1920, "height": 1080},
-                "locale": "en-US",
-                "timezone_id": "America/New_York",
-            }
-            
-            # Add proxy if available
-            if proxy:
-                context_options["proxy"] = proxy
-            
-            context = p.chromium.launch_persistent_context(**context_options)
-            page = context.new_page()
-            skip_login = False
+        # Browser context options
+        context_options = {
+            "user_data_dir": user_data_dir,
+            "executable_path": brave_path if brave_path else None,
+            "headless": headless_mode,
+            "args": browser_args,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "viewport": {"width": 1920, "height": 1080},
+            "locale": "en-US",
+            "timezone_id": "America/New_York",
+        }
+        
+        # Add proxy if available
+        if proxy:
+            context_options["proxy"] = proxy
+        
+        context = p.chromium.launch_persistent_context(**context_options)
+        page = context.new_page()
         
         # Start tracing
         trace_dir = "/tmp/traces"
         os.makedirs(trace_dir, exist_ok=True)
         trace_file = os.path.join(trace_dir, f"trace_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
-        
-        # Start tracing on context (not browser)
-        if storage_state_path:
-            context.tracing.start(screenshots=True, snapshots=True, sources=True)
-        else:
-            context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
         print(f"✓ Started Playwright trace: {trace_file}")
         
         # Navigate to site
@@ -344,21 +288,19 @@ def _upload_video_impl(row_data, downloaded_files):
         print("\n" + "="*60)
         print("STEP 2: Check login status")
         print("="*60)
+        
+        # Wait a bit for page to fully load
+        time.sleep(2)
+        
+        # Check for upload button (visible when logged in)
         upload_button_check = page.locator("a#upload-album, a[href*='/upload']")
+        is_logged_in = upload_button_check.count() > 0
         
-        # If we have stored session, we should already be logged in
-        if skip_login:
-            if upload_button_check.count() > 0:
-                print("✓ Session is valid - already logged in!")
-                take_screenshot(page, "03_logged_in_with_session")
-            else:
-                print("✗ Session expired or invalid - need to re-login")
-                print("   Please run save_session.py locally to update your session")
-                take_screenshot(page, "03_session_invalid")
-                raise Exception("Stored session is invalid. Please update BROWSER_STATE secret.")
+        print(f"Upload button found: {is_logged_in}")
+        print(f"Current URL: {page.url}")
         
-        # If upload button not visible and no stored session, we need to login
-        elif upload_button_check.count() == 0:
+        # If upload button not visible, we need to login
+        if not is_logged_in:
             username = os.getenv('WEBSITE_USERNAME')
             password = os.getenv('WEBSITE_PASSWORD')
             
@@ -656,12 +598,8 @@ def _upload_video_impl(row_data, downloaded_files):
         context.tracing.stop(path=trace_file)
         print(f"✓ Trace saved to: {trace_file}")
         
-        # Close browser/context
-        if storage_state_path:
-            context.close()
-            browser.close()
-        else:
-            context.close()
+        # Close context
+        context.close()
         
         return True
 
