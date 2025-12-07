@@ -272,6 +272,26 @@ def _upload_video_impl(row_data, downloaded_files):
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
         print(f"✓ Started Playwright trace: {trace_file}")
         
+        # Validate proxy connection by checking IP
+        if proxy:
+            print("\n" + "="*60)
+            print("Validating Proxy Connection")
+            print("="*60)
+            try:
+                page.goto('https://api.ipify.org?format=json', wait_until='networkidle', timeout=10000)
+                ip_info = page.content()
+                print(f"✓ Proxy IP check response: {ip_info}")
+                
+                # Also check with another service
+                page.goto('https://ifconfig.me/ip', wait_until='networkidle', timeout=10000)
+                ip_text = page.locator('body').text_content()
+                print(f"✓ Current IP address: {ip_text.strip()}")
+                print("✓ Proxy connection validated!")
+            except Exception as e:
+                print(f"⚠️ Proxy validation failed: {e}")
+                print("⚠️ Continuing anyway...")
+            print("="*60 + "\n")
+        
         # Navigate to site
         print("\n" + "="*60)
         print("STEP 1: Navigate to erome.com")
