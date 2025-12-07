@@ -29,16 +29,16 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
-      - name: Install Brave Browser
+      - name: Install XVFB and Brave Browser
         run: |
-          sudo apt install curl -y
+          sudo apt install xvfb curl -y
           sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
           sudo apt update
           sudo apt install brave-browser -y
           which brave-browser
 
-      - name: Run uploader
+      - name: Run uploader with XVFB
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
@@ -46,4 +46,8 @@ jobs:
           WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
           WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
           TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
-        run: python upload_videos.py
+          DISPLAY: :99
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          python upload_videos.py
