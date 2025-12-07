@@ -492,16 +492,39 @@ def _upload_video_impl(row_data, downloaded_files):
         # Store the current URL to detect changes
         initial_url = page.url
         
-        # Click the button (without waiting for navigation)
+        # Try multiple click methods with retries
         print("Clicking upload button...")
-        try:
-            upload_button.click()
-            print("✓ Button clicked")
-        except Exception as e:
-            print(f"⚠️ Click failed: {e}")
-            print("Trying force click...")
-            upload_button.click(force=True)
-            print("✓ Force click completed")
+        click_methods = [
+            ("Regular click", lambda: upload_button.click()),
+            ("Force click", lambda: upload_button.click(force=True)),
+            ("Click with delay", lambda: (upload_button.click(delay=100), time.sleep(0.5))),
+            ("JavaScript click", lambda: page.evaluate("document.querySelector('a#upload-album, a[href*=\"/upload\"]').click()")),
+            ("Dispatch click event", lambda: upload_button.dispatch_event('click')),
+        ]
+        
+        click_succeeded = False
+        for method_name, click_func in click_methods:
+            try:
+                print(f"  Trying: {method_name}...")
+                click_func()
+                print(f"  ✓ {method_name} completed")
+                click_succeeded = True
+                time.sleep(1)  # Give it a moment to process
+                
+                # Check if anything changed (URL or modal appeared)
+                if page.url != initial_url or page.locator('#rules').count() > 0:
+                    print(f"  ✓ {method_name} triggered a response!")
+                    break
+                else:
+                    print(f"  ⚠️ {method_name} didn't trigger navigation, trying next method...")
+            except Exception as e:
+                print(f"  ✗ {method_name} failed: {e}")
+                continue
+        
+        if not click_succeeded:
+            raise Exception("All click methods failed")
+        
+        print("✓ Button click completed, waiting for response...")
         
         # Wait for URL to change (polling approach)
         print("Waiting for navigation to complete...")
