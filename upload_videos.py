@@ -246,8 +246,14 @@ def _upload_video_impl(row_data, downloaded_files):
                 page.fill('input[name="captcha"]', captcha_solution)
                 time.sleep(0.5)
                 
+                print("  Looking for submit button...")
+                submit_button = page.locator('button[type="submit"].btn.btn-pink')
+                if submit_button.count() == 0:
+                    print("  ✗ Submit button not found!")
+                    raise Exception("Login button not found on page")
+                
                 print("  Clicking submit button...")
-                page.locator('button.btn.btn-pink[type="submit"]').click()
+                submit_button.click()
                 print("  Waiting for page to load...")
                 page.wait_for_load_state('networkidle')
                 time.sleep(3)
