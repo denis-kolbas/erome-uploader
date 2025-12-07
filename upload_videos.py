@@ -26,7 +26,10 @@ PROXY_PASSWORD = os.getenv("PROXY_PASSWORD", "wsramyu1qzh0")
 
 def get_proxy_config():
     """Get proxy configuration for Playwright"""
-    print(f"Proxy enabled: {PROXY_ENABLED}")
+    proxy_env_value = os.getenv("PROXY_ENABLED", "true")
+    print(f"PROXY_ENABLED env value: '{proxy_env_value}' (type: {type(proxy_env_value)})")
+    print(f"PROXY_ENABLED parsed: {PROXY_ENABLED}")
+    
     if not PROXY_ENABLED:
         print("⚠️ Proxy is DISABLED - running without proxy")
         return None
@@ -440,58 +443,58 @@ def _upload_video_impl(row_data, downloaded_files):
         upload_button.scroll_into_view_if_needed()
         time.sleep(0.5)
         
-        # Try multiple click methods
-        click_success = False
+        # Store the current URL to detect changes
+        initial_url = page.url
         
-        # Method 1: Regular click with navigation wait
-        try:
-            print("Attempting click method 1: Regular click...")
-            with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
-                upload_button.click()
-            click_success = True
-            print("✓ Click method 1 succeeded")
-        except Exception as e:
-            print(f"⚠️ Click method 1 failed: {e}")
+        # Click the button (without waiting for navigation)
+        print("Clicking upload button...")
+        upload_button.click()
+        print("✓ Button clicked")
         
-        # Method 2: Force click if regular click failed
-        if not click_success:
-            try:
-                print("Attempting click method 2: Force click...")
-                with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
-                    upload_button.click(force=True)
-                click_success = True
-                print("✓ Click method 2 succeeded")
-            except Exception as e:
-                print(f"⚠️ Click method 2 failed: {e}")
+        # Wait for URL to change (polling approach)
+        print("Waiting for navigation to complete...")
+        max_wait = 30  # 30 seconds max
+        wait_interval = 0.5
+        elapsed = 0
+        navigation_success = False
         
-        # Method 3: JavaScript click if force click failed
-        if not click_success:
-            try:
-                print("Attempting click method 3: JavaScript click...")
-                with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
-                    page.evaluate("document.querySelector('a#upload-album, a[href*=\"/upload\"]').click()")
-                click_success = True
-                print("✓ Click method 3 succeeded")
-            except Exception as e:
-                print(f"⚠️ Click method 3 failed: {e}")
+        while elapsed < max_wait:
+            current_url = page.url
+            
+            # Check if we've navigated to the upload/edit page
+            if current_url != initial_url and '/a/' in current_url:
+                print(f"✓ Navigation detected! New URL: {current_url}")
+                navigation_success = True
+                break
+            
+            # Log progress every 2 seconds
+            if elapsed % 2 == 0 and elapsed > 0:
+                print(f"  Still waiting... ({elapsed}s elapsed, current URL: {current_url})")
+            
+            time.sleep(wait_interval)
+            elapsed += wait_interval
         
-        if not click_success:
-            raise Exception("Failed to navigate to upload page - all click methods failed")
+        if not navigation_success:
+            take_screenshot(page, "ERROR_navigation_failed")
+            print(f"✗ Navigation timeout. Final URL: {page.url}")
+            
+            # Try JavaScript click as fallback
+            print("Trying JavaScript click as fallback...")
+            page.evaluate("document.querySelector('a#upload-album, a[href*=\"/upload\"]').click()")
+            time.sleep(5)
+            
+            if '/a/' in page.url:
+                print(f"✓ JavaScript click worked! URL: {page.url}")
+                navigation_success = True
+            else:
+                raise Exception(f"Failed to navigate to upload page. Current URL: {page.url}")
         
+        # Wait for page to be fully loaded
+        page.wait_for_load_state('domcontentloaded')
         time.sleep(2)
         
-        # Verify we're on the upload/edit page
-        current_url = page.url
-        print(f"✓ Current URL after navigation: {current_url}")
-        
-        if '/a/' not in current_url:
-            raise Exception(f"Not on upload page. Current URL: {current_url}")
-        
         take_screenshot(page, "10_upload_page_loaded")
-        
-        # Wait for page to be ready
-        page.wait_for_load_state('domcontentloaded')
-        time.sleep(1)
+        print(f"✓ Successfully on upload page: {page.url}")
         
         # Handle rules modal if present
         try:
