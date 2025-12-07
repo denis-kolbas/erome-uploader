@@ -275,6 +275,22 @@ def _upload_video_impl(row_data, downloaded_files):
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
         print(f"✓ Started Playwright trace: {trace_file}")
         
+        # Monitor network requests to see what's happening
+        network_log = []
+        def log_request(request):
+            network_log.append({
+                'url': request.url,
+                'method': request.method,
+                'headers': dict(request.headers)
+            })
+        
+        def log_response(response):
+            if 'upload' in response.url or 'album' in response.url:
+                print(f"📡 Network: {response.status} {response.request.method} {response.url}")
+        
+        page.on('request', log_request)
+        page.on('response', log_response)
+        
         # Validate proxy connection by checking IP
         if proxy:
             print("\n" + "="*60)
@@ -319,8 +335,21 @@ def _upload_video_impl(row_data, downloaded_files):
         upload_button_check = page.locator("a#upload-album, a[href*='/upload']")
         is_logged_in = upload_button_check.count() > 0
         
+        # Also check for other logged-in indicators
+        user_menu = page.locator('.user-menu, .dropdown-toggle, a[href*="/user/"]')
+        logout_button = page.locator('a[href*="logout"]')
+        
         print(f"Upload button found: {is_logged_in}")
+        print(f"User menu found: {user_menu.count() > 0}")
+        print(f"Logout button found: {logout_button.count() > 0}")
         print(f"Current URL: {page.url}")
+        
+        # Verify session by checking cookies
+        cookies = page.context.cookies()
+        session_cookies = [c for c in cookies if 'session' in c['name'].lower() or 'remember' in c['name'].lower()]
+        print(f"Session cookies found: {len(session_cookies)}")
+        for cookie in session_cookies:
+            print(f"  - {cookie['name']}: {cookie['value'][:20]}...")
         
         # If upload button not visible, we need to login
         if not is_logged_in:
@@ -487,6 +516,21 @@ def _upload_video_impl(row_data, downloaded_files):
         # Scroll to button to ensure it's in view
         upload_button.scroll_into_view_if_needed()
         time.sleep(0.5)
+        
+        # Check for CSRF tokens on the page
+        try:
+            csrf_meta = page.locator('meta[name="csrf-token"]')
+            if csrf_meta.count() > 0:
+                csrf_token = csrf_meta.get_attribute('content')
+                print(f"CSRF token found: {csrf_token[:20]}...")
+            
+            # Also check for tokens in forms
+            csrf_inputs = page.locator('input[name="_token"], input[name="csrf_token"], input[name="authenticity_token"]')
+            if csrf_inputs.count() > 0:
+                print(f"CSRF input fields found: {csrf_inputs.count()}")
+        except Exception as e:
+            print(f"No CSRF tokens found on page")
+        
         take_screenshot(page, "before_upload_click")
         
         # Store the current URL to detect changes
@@ -525,6 +569,20 @@ def _upload_video_impl(row_data, downloaded_files):
             raise Exception("All click methods failed")
         
         print("✓ Button click completed, waiting for response...")
+        
+        # Check for any error messages or alerts
+        time.sleep(1)
+        try:
+            # Check for alert/error messages
+            error_selectors = ['.alert-danger', '.alert-error', '.error-message', '.toast-error']
+            for selector in error_selectors:
+                error_elem = page.locator(selector)
+                if error_elem.count() > 0:
+                    error_text = error_elem.text_content()
+                    print(f"⚠️ Error message detected: {error_text}")
+                    take_screenshot(page, "error_message_after_click")
+        except:
+            pass
         
         # Wait for URL to change (polling approach)
         print("Waiting for navigation to complete...")
@@ -586,6 +644,30 @@ def _upload_video_impl(row_data, downloaded_files):
         if not navigation_success:
             take_screenshot(page, "ERROR_navigation_failed")
             print(f"✗ Navigation timeout. Final URL: {page.url}")
+            
+            # Log recent network activity
+            print("\n📡 Recent network requests:")
+            for req in network_log[-10:]:  # Last 10 requests
+                print(f"  {req['method']} {req['url']}")
+            
+            # Check console for errors
+            print("\n🔍 Checking for JavaScript errors...")
+            try:
+                console_errors = page.evaluate("""
+                    () => {
+                        const errors = [];
+                        const originalError = console.error;
+                        console.error = function(...args) {
+                            errors.push(args.join(' '));
+                            originalError.apply(console, args);
+                        };
+                        return errors;
+                    }
+                """)
+                if console_errors:
+                    print(f"Console errors: {console_errors}")
+            except:
+                pass
             
             # Try JavaScript click as fallback
             print("Trying JavaScript click as fallback...")
