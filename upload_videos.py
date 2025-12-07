@@ -431,24 +431,51 @@ def _upload_video_impl(row_data, downloaded_files):
             print("✓ Already logged in")
 
         # Navigate to upload
+        print("Navigating to upload page...")
         upload_button = page.locator("a#upload-album, a[href*='/upload']")
         upload_button.wait_for(state='visible', timeout=10000)
-        upload_button.click()
-        page.wait_for_load_state('networkidle')
+        
+        # Click and wait for navigation
+        try:
+            with page.expect_navigation(timeout=15000):
+                upload_button.click()
+            print("✓ Navigated to upload page")
+        except Exception as e:
+            print(f"⚠️ Navigation timeout (might be okay): {e}")
+        
         time.sleep(2)
-        if page.locator('#rules:visible').count() > 0:
-            page.locator('#rules button[data-dismiss="modal"]').click()
-            time.sleep(0.5)
+        
+        # Wait for page to be ready
+        page.wait_for_load_state('domcontentloaded')
+        time.sleep(1)
+        
+        # Handle rules modal if present
+        try:
+            rules_modal = page.locator('#rules:visible')
+            if rules_modal.count() > 0:
+                print("Closing rules modal...")
+                page.locator('#rules button[data-dismiss="modal"]').click()
+                time.sleep(0.5)
+        except Exception as e:
+            print(f"⚠️ Error checking rules modal: {e}")
 
         # Update title
+        print("Updating album title...")
         new_title = row_data["title"]
-        title_handle = page.locator("h1#title_editable.content-editable.album-title").element_handle()
+        
+        # Wait for title element to be available
+        title_locator = page.locator("h1#title_editable.content-editable.album-title")
+        title_locator.wait_for(state='visible', timeout=10000)
+        
+        title_handle = title_locator.element_handle()
         page.evaluate("""
             (el) => { el.focus(); document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); }
         """, title_handle)
+        
         for char in new_title:
             page.keyboard.type(char)
             time.sleep(0.05)
+        
         page.keyboard.press("Enter")
         page.evaluate("""
             (el) => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
