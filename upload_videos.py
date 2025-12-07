@@ -210,22 +210,52 @@ def _upload_video_impl(row_data, downloaded_files):
         if upload_button_check.count() == 0:
             print("Not logged in. Navigating to login page...")
             page.goto('https://www.erome.com/user/login', wait_until='networkidle')
-            time.sleep(1)
+            time.sleep(2)
+            print(f"✓ On login page: {page.url}")
             
             print("Logging in...")
             username = os.getenv('WEBSITE_USERNAME')
             password = os.getenv('WEBSITE_PASSWORD')
+            
+            print(f"  Filling username: {username[:3]}***")
             page.fill('input#email.form-control', username)
+            time.sleep(0.5)
+            
+            print(f"  Filling password: ***")
             page.fill('input#password.form-control', password)
+            time.sleep(0.5)
+            
+            print("  Solving captcha...")
             captcha_solution = solve_captcha(page)
             if captcha_solution:
+                print(f"  Filling captcha: {captcha_solution}")
                 page.fill('input[name="captcha"]', captcha_solution)
+                time.sleep(0.5)
+            else:
+                raise Exception("Captcha solving failed")
+            
+            print("  Clicking submit button...")
             page.locator('button.btn.btn-pink[type="submit"]').click()
+            print("  Waiting for page to load...")
             page.wait_for_load_state('networkidle')
-            time.sleep(2)
+            time.sleep(3)
+            
+            print(f"  After login URL: {page.url}")
+            
+            # Check for error messages
+            error_msg = page.locator('.alert-danger, .error').first
+            if error_msg.count() > 0:
+                error_text = error_msg.text_content()
+                print(f"  ✗ Error message on page: {error_text}")
             
             # Verify login was successful
-            if page.locator("a#upload-album, a[href*='/upload']").count() == 0:
+            upload_btn_count = page.locator("a#upload-album, a[href*='/upload']").count()
+            print(f"  Upload button count: {upload_btn_count}")
+            
+            if upload_btn_count == 0:
+                # Take screenshot for debugging
+                page.screenshot(path='login_failed.png')
+                print("  ✗ Screenshot saved to login_failed.png")
                 raise Exception("Login failed - upload button not visible after login")
             print("✓ Login successful!")
         else:
