@@ -46,11 +46,8 @@ jobs:
           WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
           WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
           TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
-          PROXY_ENABLED: true
-          PROXY_HOST: p.webshare.io
-          PROXY_PORT: 80
-          PROXY_USERNAME: mhcbvnkx-rotate
-          PROXY_PASSWORD: wsramyu1qzh0
+          BROWSER_STATE: ${{ secrets.BROWSER_STATE }}
+          PROXY_ENABLED: false
         run: python upload_videos.py
 
       - name: Upload Playwright traces
