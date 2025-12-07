@@ -515,16 +515,35 @@ def _upload_video_impl(row_data, downloaded_files):
             current_url = page.url
             
             # Check for rules popup (appears after clicking upload button)
-            if not popup_checked or elapsed % 2 == 0:  # Check initially and every 2 seconds
+            if not popup_checked or elapsed % 1 == 0:  # Check every second
                 try:
-                    rules_modal = page.locator('#rules:visible')
+                    # Check multiple ways to detect the modal
+                    rules_modal = page.locator('#rules')
+                    
+                    # Check if modal exists and is displayed
                     if rules_modal.count() > 0:
-                        print("⚠️ Rules popup detected, closing it...")
-                        take_screenshot(page, "popup_rules_modal")
-                        page.locator('#rules button[data-dismiss="modal"]').click()
-                        time.sleep(0.5)
-                        print("✓ Rules popup closed")
-                        popup_checked = True
+                        display_style = rules_modal.get_attribute('style')
+                        modal_class = rules_modal.get_attribute('class')
+                        
+                        # Modal is visible if it has "display: block" or class contains "in"
+                        is_visible = ('display: block' in (display_style or '')) or ('in' in (modal_class or ''))
+                        
+                        if is_visible:
+                            print(f"⚠️ Rules popup detected! (style={display_style}, class={modal_class})")
+                            take_screenshot(page, "popup_rules_modal")
+                            
+                            # Click the close button
+                            close_button = page.locator('#rules button[data-dismiss="modal"]')
+                            if close_button.count() > 0:
+                                close_button.click()
+                                time.sleep(1)
+                                print("✓ Rules popup closed")
+                                popup_checked = True
+                            else:
+                                print("⚠️ Close button not found, trying alternative...")
+                                # Try clicking outside the modal or pressing Escape
+                                page.keyboard.press('Escape')
+                                time.sleep(0.5)
                 except Exception as e:
                     pass  # Popup not present or already closed
             
