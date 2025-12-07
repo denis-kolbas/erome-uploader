@@ -17,11 +17,34 @@ SHEET_NAME = "calendar"
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 VIDEO_DOWNLOAD_PATH = "/tmp/Ero/videos"
 
+# Validate required environment variables
+required_vars = {
+    "GOOGLE_SERVICE_ACCOUNT_JSON": SERVICE_ACCOUNT_JSON,
+    "GOOGLE_SHEET_ID": SHEET_ID,
+    "GOOGLE_DRIVE_FOLDER_ID": DRIVE_FOLDER_ID,
+    "WEBSITE_USERNAME": os.getenv("WEBSITE_USERNAME"),
+    "WEBSITE_PASSWORD": os.getenv("WEBSITE_PASSWORD"),
+    "TWO_CAPTCHA_API_KEY": os.getenv("TWO_CAPTCHA_API_KEY"),
+}
+
+missing_vars = [name for name, value in required_vars.items() if not value]
+if missing_vars:
+    print(f"✗ Error: Missing required environment variables: {', '.join(missing_vars)}")
+    print("\nFor GitHub Actions, add these as repository secrets:")
+    print("https://github.com/YOUR_USERNAME/YOUR_REPO/settings/secrets/actions")
+    exit(1)
+
 if not os.path.exists(VIDEO_DOWNLOAD_PATH):
     os.makedirs(VIDEO_DOWNLOAD_PATH)
 
 # Google Sheets / Drive setup
-creds_info = json.loads(SERVICE_ACCOUNT_JSON)
+try:
+    creds_info = json.loads(SERVICE_ACCOUNT_JSON)
+except json.JSONDecodeError as e:
+    print(f"✗ Error: GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON")
+    print(f"Details: {e}")
+    print("\nMake sure you copied the entire JSON object from your service account file.")
+    exit(1)
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
           "https://www.googleapis.com/auth/drive.readonly"]
 
@@ -45,7 +68,16 @@ def get_first_pending_row():
                 return i, dict(zip(header, row))
         return None
     except Exception as e:
-        print("Error accessing sheet:", e)
+        print(f"✗ Error accessing sheet: {e}")
+        if "404" in str(e):
+            print("\nPossible issues:")
+            print(f"1. Sheet ID might be wrong: {SHEET_ID}")
+            print(f"2. Sheet tab '{SHEET_NAME}' doesn't exist")
+            print("3. Service account doesn't have access to the sheet")
+            print("\nTo fix:")
+            print("- Verify GOOGLE_SHEET_ID is correct")
+            print("- Make sure your sheet has a tab named 'calendar'")
+            print("- Share the sheet with your service account email")
         return None
 
 def update_sheet_row(row_number, status, timestamp):
