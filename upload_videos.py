@@ -430,37 +430,62 @@ def _upload_video_impl(row_data, downloaded_files):
         print("\n" + "="*60)
         print("STEP 3: Navigate to upload page")
         print("="*60)
-        upload_button = page.locator("a#upload-album, a[href*='/upload']")
+        
+        # Find the upload button
+        upload_button = page.locator("a#upload-album, a[href*='/upload']").first
         upload_button.wait_for(state='visible', timeout=10000)
+        print(f"Upload button found, current URL: {page.url}")
         
-        # Get the href to see where it's going
-        upload_href = upload_button.get_attribute('href')
-        print(f"Upload button href: {upload_href}")
+        # Scroll to button to ensure it's in view
+        upload_button.scroll_into_view_if_needed()
+        time.sleep(0.5)
         
-        # Click and wait for navigation
+        # Try multiple click methods
+        click_success = False
+        
+        # Method 1: Regular click with navigation wait
         try:
-            with page.expect_navigation(timeout=15000):
+            print("Attempting click method 1: Regular click...")
+            with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
                 upload_button.click()
-            print("✓ Navigation occurred")
+            click_success = True
+            print("✓ Click method 1 succeeded")
         except Exception as e:
-            print(f"⚠️ Navigation timeout: {e}")
-            # Try direct navigation if click didn't work
-            if upload_href:
-                print(f"Trying direct navigation to: {upload_href}")
-                page.goto(f"https://www.erome.com{upload_href}", wait_until='networkidle')
+            print(f"⚠️ Click method 1 failed: {e}")
+        
+        # Method 2: Force click if regular click failed
+        if not click_success:
+            try:
+                print("Attempting click method 2: Force click...")
+                with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
+                    upload_button.click(force=True)
+                click_success = True
+                print("✓ Click method 2 succeeded")
+            except Exception as e:
+                print(f"⚠️ Click method 2 failed: {e}")
+        
+        # Method 3: JavaScript click if force click failed
+        if not click_success:
+            try:
+                print("Attempting click method 3: JavaScript click...")
+                with page.expect_navigation(timeout=10000, wait_until='domcontentloaded'):
+                    page.evaluate("document.querySelector('a#upload-album, a[href*=\"/upload\"]').click()")
+                click_success = True
+                print("✓ Click method 3 succeeded")
+            except Exception as e:
+                print(f"⚠️ Click method 3 failed: {e}")
+        
+        if not click_success:
+            raise Exception("Failed to navigate to upload page - all click methods failed")
         
         time.sleep(2)
         
-        # Check if we're on the upload/edit page
+        # Verify we're on the upload/edit page
         current_url = page.url
-        print(f"Current URL after navigation: {current_url}")
+        print(f"✓ Current URL after navigation: {current_url}")
         
-        if '/a/' not in current_url and '/upload' not in current_url:
-            print("⚠️ Not on upload page, trying direct navigation...")
-            page.goto('https://www.erome.com/upload', wait_until='networkidle')
-            time.sleep(2)
-            current_url = page.url
-            print(f"URL after direct navigation: {current_url}")
+        if '/a/' not in current_url:
+            raise Exception(f"Not on upload page. Current URL: {current_url}")
         
         take_screenshot(page, "10_upload_page_loaded")
         
