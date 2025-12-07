@@ -203,6 +203,28 @@ def handle_age_overlay(page):
     except Exception as e:
         print(f"✗ Error handling age overlay: {e}")
 
+# Screenshot counter for sequential naming
+screenshot_counter = 0
+
+def take_screenshot(page, description):
+    """Take a screenshot with detailed logging"""
+    global screenshot_counter
+    screenshot_counter += 1
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"screenshot_{screenshot_counter:02d}_{timestamp}_{description}.png"
+    
+    try:
+        page.screenshot(path=filename)
+        current_url = page.url
+        page_title = page.title()
+        print(f"📸 Screenshot {screenshot_counter}: {description}")
+        print(f"   URL: {current_url}")
+        print(f"   Title: {page_title}")
+        print(f"   File: {filename}")
+    except Exception as e:
+        print(f"⚠️ Failed to take screenshot: {e}")
+
 # --- Main uploader ---
 def upload_video(row_data):
     downloaded_files = []
@@ -307,21 +329,32 @@ def _upload_video_impl(row_data, downloaded_files):
         print(f"✓ Started Playwright trace: {trace_file}")
         
         # Navigate to site
+        print("\n" + "="*60)
+        print("STEP 1: Navigate to erome.com")
+        print("="*60)
         page.goto('https://www.erome.com/explore', wait_until='networkidle')
         time.sleep(1)
+        take_screenshot(page, "01_initial_page")
+        
         handle_age_overlay(page)
         time.sleep(1)
+        take_screenshot(page, "02_after_age_verification")
 
         # Check if logged in by looking for upload button
+        print("\n" + "="*60)
+        print("STEP 2: Check login status")
+        print("="*60)
         upload_button_check = page.locator("a#upload-album, a[href*='/upload']")
         
         # If we have stored session, we should already be logged in
         if skip_login:
             if upload_button_check.count() > 0:
                 print("✓ Session is valid - already logged in!")
+                take_screenshot(page, "03_logged_in_with_session")
             else:
                 print("✗ Session expired or invalid - need to re-login")
                 print("   Please run save_session.py locally to update your session")
+                take_screenshot(page, "03_session_invalid")
                 raise Exception("Stored session is invalid. Please update BROWSER_STATE secret.")
         
         # If upload button not visible and no stored session, we need to login
@@ -341,6 +374,7 @@ def _upload_video_impl(row_data, downloaded_files):
                 page.goto('https://www.erome.com/user/login', wait_until='networkidle')
                 time.sleep(2)
                 print(f"✓ On login page: {page.url}")
+                take_screenshot(page, f"03_login_page_attempt_{attempt}")
                 
                 print(f"  Filling username: {username[:3]}***")
                 page.fill('input#email.form-control', username)
@@ -349,11 +383,13 @@ def _upload_video_impl(row_data, downloaded_files):
                 print(f"  Filling password: ***")
                 page.fill('input#password.form-control', password)
                 time.sleep(0.5)
+                take_screenshot(page, f"04_credentials_filled_attempt_{attempt}")
                 
                 print("  Solving captcha...")
                 captcha_solution = solve_captcha(page)
                 if not captcha_solution:
                     print(f"  ✗ Captcha solving failed on attempt {attempt}")
+                    take_screenshot(page, f"05_captcha_failed_attempt_{attempt}")
                     if attempt < max_login_attempts:
                         print("  Retrying...")
                         continue
@@ -363,10 +399,7 @@ def _upload_video_impl(row_data, downloaded_files):
                 print(f"  Filling captcha: {captcha_solution}")
                 page.fill('input[name="captcha"]', captcha_solution)
                 time.sleep(1)
-                
-                # Take screenshot before submitting
-                page.screenshot(path=f'before_submit_attempt_{attempt}.png')
-                print(f"  Screenshot saved: before_submit_attempt_{attempt}.png")
+                take_screenshot(page, f"06_before_submit_attempt_{attempt}")
                 
                 print("  Looking for submit button...")
                 submit_button = page.locator('button[type="submit"].btn.btn-pink')
@@ -384,6 +417,7 @@ def _upload_video_impl(row_data, downloaded_files):
                     print(f"  ⚠️ No navigation after submit: {e}")
                 
                 time.sleep(3)
+                take_screenshot(page, f"07_after_submit_attempt_{attempt}")
                 
                 print(f"  After login URL: {page.url}")
                 
@@ -414,16 +448,16 @@ def _upload_video_impl(row_data, downloaded_files):
                 if upload_btn_count > 0:
                     login_successful = True
                     print(f"✓ Login successful on attempt {attempt}!")
+                    take_screenshot(page, f"08_login_success_attempt_{attempt}")
                     break
                 else:
                     print(f"  ✗ Login failed on attempt {attempt}")
+                    take_screenshot(page, f"08_login_failed_attempt_{attempt}")
                     if attempt < max_login_attempts:
                         print("  Captcha was likely wrong. Retrying with new captcha...")
                         time.sleep(2)
                     else:
-                        # Take screenshot on final failure
-                        page.screenshot(path='login_failed.png')
-                        print("  ✗ Screenshot saved to login_failed.png")
+                        print("  ✗ All login attempts failed")
             
             if not login_successful:
                 raise Exception(f"Login failed after {max_login_attempts} attempts")
@@ -431,7 +465,9 @@ def _upload_video_impl(row_data, downloaded_files):
             print("✓ Already logged in")
 
         # Navigate to upload
-        print("Navigating to upload page...")
+        print("\n" + "="*60)
+        print("STEP 3: Navigate to upload page")
+        print("="*60)
         upload_button = page.locator("a#upload-album, a[href*='/upload']")
         upload_button.wait_for(state='visible', timeout=10000)
         
@@ -444,6 +480,7 @@ def _upload_video_impl(row_data, downloaded_files):
             print(f"⚠️ Navigation timeout (might be okay): {e}")
         
         time.sleep(2)
+        take_screenshot(page, "10_upload_page_loaded")
         
         # Wait for page to be ready
         page.wait_for_load_state('domcontentloaded')
@@ -454,14 +491,19 @@ def _upload_video_impl(row_data, downloaded_files):
             rules_modal = page.locator('#rules:visible')
             if rules_modal.count() > 0:
                 print("Closing rules modal...")
+                take_screenshot(page, "11_rules_modal")
                 page.locator('#rules button[data-dismiss="modal"]').click()
                 time.sleep(0.5)
+                take_screenshot(page, "12_rules_modal_closed")
         except Exception as e:
             print(f"⚠️ Error checking rules modal: {e}")
 
         # Update title
-        print("Updating album title...")
+        print("\n" + "="*60)
+        print("STEP 4: Update album title")
+        print("="*60)
         new_title = row_data["title"]
+        print(f"New title: {new_title}")
         
         # Wait for title element to be available
         title_locator = page.locator("h1#title_editable.content-editable.album-title")
@@ -482,9 +524,15 @@ def _upload_video_impl(row_data, downloaded_files):
         """, title_handle)
         print(f"✓ Album title updated to: {new_title}")
         time.sleep(1)
+        take_screenshot(page, "13_title_updated")
 
         # Upload files
+        print("\n" + "="*60)
+        print("STEP 5: Download and upload video files")
+        print("="*60)
         video_files = [v.strip() for v in row_data["videos"].split(",") if v.strip()]
+        print(f"Videos to upload: {video_files}")
+        
         for vf in video_files:
             print(f"Downloading: {vf}")
             try:
@@ -498,13 +546,19 @@ def _upload_video_impl(row_data, downloaded_files):
         if not downloaded_files:
             raise Exception("No videos were successfully downloaded")
         
+        print(f"Starting file upload for {len(downloaded_files)} file(s)...")
         file_input = page.locator('#add_more_file')
         file_input.set_input_files(downloaded_files)
         print(f"✓ Files queued for upload: {len(downloaded_files)} file(s)")
+        time.sleep(2)
+        take_screenshot(page, "14_files_queued")
         
         # Wait for upload to complete
-        print("Waiting for files to upload...")
+        print("\n" + "="*60)
+        print("STEP 6: Wait for upload to complete")
+        print("="*60)
         time.sleep(5)  # Initial wait for upload to start
+        take_screenshot(page, "15_upload_started")
         
         # Check for video thumbnails in #medias div (indicates upload complete)
         max_wait = 300  # 5 minutes max wait
@@ -516,21 +570,31 @@ def _upload_video_impl(row_data, downloaded_files):
             media_items = page.locator('#medias .media-group, #medias video, #medias img').count()
             if media_items >= len(downloaded_files):
                 print(f"✓ All {len(downloaded_files)} file(s) uploaded successfully")
+                take_screenshot(page, "16_upload_complete")
                 break
             
             print(f"Upload in progress... ({elapsed}s elapsed, {media_items}/{len(downloaded_files)} files visible)")
+            if elapsed % 30 == 0:  # Screenshot every 30 seconds
+                take_screenshot(page, f"upload_progress_{elapsed}s")
             time.sleep(wait_interval)
             elapsed += wait_interval
         
         if elapsed >= max_wait:
             print(f"⚠️ Upload timeout reached. Proceeding anyway...")
+            take_screenshot(page, "16_upload_timeout")
         
         # Extra wait to ensure processing is complete
         print("Waiting additional time for upload processing...")
         time.sleep(60)  # 1 minute extra wait
+        take_screenshot(page, "17_after_processing_wait")
 
         # Add tags
+        print("\n" + "="*60)
+        print("STEP 7: Add tags")
+        print("="*60)
         tags = [t.strip() for t in row_data["tags"].split(",") if t.strip()]
+        print(f"Tags to add: {tags}")
+        
         if tags:
             tags_input = page.locator('#tag_input')
             for tag in tags:
@@ -538,15 +602,20 @@ def _upload_video_impl(row_data, downloaded_files):
                 tags_input.press("Enter")
                 time.sleep(0.5)
             print(f"✓ Tags added: {', '.join(tags)}")
+            take_screenshot(page, "18_tags_added")
         else:
             print("⚠️ No tags to add")
 
         # Save / publish
-        print("Preparing to save album...")
+        print("\n" + "="*60)
+        print("STEP 8: Save and publish album")
+        print("="*60)
         time.sleep(3)
+        take_screenshot(page, "19_before_save")
         
         save_button = page.locator("div#done_box a.btn.btn-pink")
         if save_button.count() == 0:
+            take_screenshot(page, "ERROR_save_button_not_found")
             raise Exception("Save button not found - upload may have failed")
         
         # Get the redirect URL from onclick before clicking
@@ -558,6 +627,7 @@ def _upload_video_impl(row_data, downloaded_files):
         
         # Wait for redirect (the onclick has 200ms delay, then redirects)
         time.sleep(2)
+        take_screenshot(page, "20_after_save_click")
         
         # Wait for page to load after redirect (use 'load' instead of 'networkidle')
         try:
@@ -566,17 +636,21 @@ def _upload_video_impl(row_data, downloaded_files):
             print(f"⚠️ Page load timeout (this is usually fine): {e}")
         
         time.sleep(3)
+        take_screenshot(page, "21_final_page")
         
         final_url = page.url
         print(f"✓ Upload complete. Final URL: {final_url}")
         
         # Verify we're on the album page (not still on upload page)
         if '/upload' in final_url:
+            take_screenshot(page, "ERROR_still_on_upload_page")
             raise Exception("Still on upload page - album may not have been created")
         elif '/a/' in final_url:
             print("✓ Successfully redirected to album page")
+            take_screenshot(page, "22_SUCCESS_album_page")
         else:
             print(f"⚠️ Unexpected URL pattern: {final_url}")
+            take_screenshot(page, "WARNING_unexpected_url")
         
         # Stop tracing and save
         context.tracing.stop(path=trace_file)

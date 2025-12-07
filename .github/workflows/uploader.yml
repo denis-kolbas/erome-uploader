@@ -64,8 +64,8 @@ jobs:
         with:
           name: screenshots-${{ github.run_number }}
           path: |
+            screenshot_*.png
             captcha.png
-            login_failed.png
-            before_submit_attempt_*.png
+            *.png
           retention-days: 7
           if-no-files-found: ignore
