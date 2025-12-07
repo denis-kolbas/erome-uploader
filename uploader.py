@@ -2,16 +2,19 @@ import os
 import time
 import shutil
 import json
-import requests
 import urllib.parse
 from datetime import datetime
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
+
+# Load environment variables
+load_dotenv()
+
 try:
     from playwright_stealth import stealth_sync
     STEALTH_AVAILABLE = True
 except ImportError:
-    print("⚠️ playwright-stealth not available, continuing without it")
+    print("⚠️ playwright-stealth not available. ADD 'playwright-stealth' to requirements.txt")
     STEALTH_AVAILABLE = False
 
 from google.oauth2.service_account import Credentials
@@ -19,11 +22,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
 
-# Load environment variables
-load_dotenv()
-
 # --- HARDCODED COOKIES ---
-# Ensure these are fresh from your browser!
 RAW_XSRF_TOKEN = "eyJpdiI6IlNya3J1aXF1M2FuRldqV3RGSFgzcnc9PSIsInZhbHVlIjoiU0V5STVaOWJIVFFIRmJoSHFKak51Y3JNQ1wvaHIxT09EQjlPc1pOZEg3RE9Uak5nM3plcVkzZ1RyMk5wbWd3cXdsMmNGejB5QXphejlzWmtnejdrT3ZBPT0iLCJtYWMiOiJkMzdkZjkxOWIwMTQxZWE4MzdmMDc5ZGYzYmVhYTA3ZjMzODYwODg4MTZiNGMwYjNkNTNlZGJhMDQwMmUwN2RhIn0%3D" 
 RAW_EROME_SESSION = "eyJpdiI6InJWazB0bzMzWW5BWExaK3I2YVlxekE9PSIsInZhbHVlIjoidzRsUFBrWStnQm80Tk9CWXBBbDYyRXlldGkxNkltVGh1OXdPcDJDYVhFK204Rlc5TERzamZ0QnU3dTRTcDk3M2pHNzdsTWtXZXZRZHlwSzR2REZld0E9PSIsIm1hYyI6IjgxMzY1MmQ5NjRiYzE1MmEyYWM2MGZkNjU4YWUxMTgyYTVjMGY2ZTM1ODFmNTMyZmI1YTVjYmFkYzIwOWJmYWEifQ%3D%3D"
 
@@ -43,19 +42,16 @@ PROXY_PASSWORD = os.getenv("PROXY_PASSWORD", "wsramyu1qzh0")
 # --- HELPERS ---
 
 def find_brave_executable():
-    """Locate Brave browser binary"""
     candidates = [
         "/usr/bin/brave-browser",
         "/usr/bin/brave",
         shutil.which("brave-browser"),
         shutil.which("brave"),
         "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-        "C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
         "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
     ]
     for path in candidates:
-        if path and os.path.exists(path):
-            return path
+        if path and os.path.exists(path): return path
     return None
 
 def get_proxy_config_dict():
@@ -66,17 +62,18 @@ def get_proxy_config_dict():
         'password': PROXY_PASSWORD
     }
 
-def get_proxy_string():
-    if not PROXY_ENABLED: return None
-    return f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@{PROXY_HOST}:{PROXY_PORT}"
-
 # Init Google
 if not os.path.exists(VIDEO_DOWNLOAD_PATH): os.makedirs(VIDEO_DOWNLOAD_PATH)
-creds_info = json.loads(SERVICE_ACCOUNT_JSON)
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.readonly"]
-creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-sheets_service = build('sheets', 'v4', credentials=creds)
-drive_service = build('drive', 'v3', credentials=creds)
+try:
+    creds_info = json.loads(SERVICE_ACCOUNT_JSON)
+    SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.readonly"]
+    creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+    sheets_service = build('sheets', 'v4', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+except Exception as e:
+    print(f"Google Init Failed: {e}")
+    # Don't exit here to allow testing without google if needed, but usually we exit
+    pass 
 
 def get_first_pending_row():
     try:
@@ -119,97 +116,44 @@ def download_file_from_drive(file_name):
     fh.close()
     return save_path
 
-# --- PHASE 1: API (GET URL) ---
-
-def get_edit_url_via_api():
-    print("Step 1: Requesting Token via API...")
-    decoded_xsrf = urllib.parse.unquote(RAW_XSRF_TOKEN)
-    proxies = None
-    proxy_str = get_proxy_string()
-    if proxy_str: proxies = {"http": proxy_str, "https": proxy_str}
-
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-XSRF-TOKEN": decoded_xsrf,
-        "Cookie": f"XSRF-TOKEN={RAW_XSRF_TOKEN}; erome_session={RAW_EROME_SESSION}"
-    })
-
-    try:
-        r = session.post("https://gr.erome.com/user/upload/token", proxies=proxies, timeout=30)
-        if r.status_code != 200:
-            print(f"   ✗ API Token Refused: {r.status_code}")
-            return None
-        try: token = r.json().get('token')
-        except: token = r.text.strip().replace('"', '')
-        print(f"   ✓ Token: {token[:10]}...")
-
-        url = f"https://www.erome.com/user/upload?token={token}"
-        r = session.get(url, allow_redirects=False, proxies=proxies, timeout=30)
-        if r.status_code == 302:
-            edit_url = r.headers['Location']
-            print(f"   ✓ Edit URL: {edit_url}")
-            return edit_url
-        return None
-    except Exception as e:
-        print(f"   ✗ API Error: {e}")
-        return None
-
-# --- PHASE 2: PLAYWRIGHT (BRAVE) ---
-
+# --- POPUP HANDLER ---
 def handle_popups(page):
-    """
-    Destroys popups/overlays instead of clicking them.
-    Clicking the disclaimer causes a redirect which breaks automation.
-    """
-    print("   Checking for Popups/Overlays...")
-    
-    # 1. DELETE THE DISCLAIMER (Don't Click It)
     try:
+        # 1. Remove Disclaimer (Don't click, just delete)
         if page.locator('#disclaimer').is_visible(timeout=3000):
             print("   ⚠️ Disclaimer detected. Removing from DOM...")
             page.evaluate("document.getElementById('disclaimer').remove()")
             page.evaluate("document.body.style.overflow = 'visible'")
             print("   ✓ Disclaimer removed")
-    except Exception:
-        pass
+    except: pass
 
-    # 2. Close Rules Modal
     try:
+        # 2. Close Rules
         if page.locator('#rules').is_visible(timeout=2000):
             print("   ⚠️ Rules Modal detected. Closing...")
             page.locator('#rules button[data-dismiss="modal"]').click()
             try: page.wait_for_selector('.modal-backdrop', state='detached', timeout=3000)
-            except: pass 
+            except: pass
             print("   ✓ Rules Modal closed")
-    except Exception:
-        pass
+    except: pass
 
-def upload_video_hybrid(row_data):
-    # 1. Download
+# --- MAIN UPLOAD LOGIC ---
+
+def upload_video_full(row_data):
+    # 1. Download Files
     video_names = [v.strip() for v in row_data["videos"].split(",") if v.strip()]
     downloaded_files = []
     
     try:
         for v in video_names:
             downloaded_files.append(download_file_from_drive(v))
-            
-        # 2. Get URL
-        edit_url = get_edit_url_via_api()
-        if not edit_url: raise Exception("Failed to get API URL")
-            
-        # 3. Playwright with Brave
-        print("\nStep 2: Switching to Brave Browser...")
+
+        # 2. Start Playwright
+        print("\nStep 2: Starting Browser...")
         brave_path = find_brave_executable()
-        if brave_path:
-            print(f"   ✓ Found Brave at: {brave_path}")
-        else:
-            print("   ⚠️ Brave not found! Falling back to standard Chromium")
         
         with sync_playwright() as p:
             proxy_conf = get_proxy_config_dict()
-            
             browser = p.chromium.launch(
                 executable_path=brave_path,
                 headless=True,
@@ -217,67 +161,96 @@ def upload_video_hybrid(row_data):
                 proxy=proxy_conf
             )
             
+            # 3. Inject Cookies
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 viewport={"width": 1920, "height": 1080}
             )
             
-            # Inject Cookies
+            # Clean cookies (fix URL encoding chars)
+            clean_session = RAW_EROME_SESSION.replace("%3D", "=") if "%3D" in RAW_EROME_SESSION else RAW_EROME_SESSION
+            clean_xsrf = RAW_XSRF_TOKEN.replace("%3D", "=") if "%3D" in RAW_XSRF_TOKEN else RAW_XSRF_TOKEN
+            
             context.add_cookies([
-                {"name": "erome_session", "value": RAW_EROME_SESSION.replace("%3D", "=") if "%3D" in RAW_EROME_SESSION else RAW_EROME_SESSION, "domain": ".erome.com", "path": "/"},
+                {"name": "erome_session", "value": clean_session, "domain": ".erome.com", "path": "/"},
                 {"name": "XSRF-TOKEN", "value": RAW_XSRF_TOKEN, "domain": ".erome.com", "path": "/"}
             ])
             print("   ✓ Cookies injected")
+
+            # 4. API Handshake (USING BROWSER CONTEXT TO AVOID SSL ERRORS)
+            print("   Performing Handshake via Browser API...")
+            api_request = context.request
+            
+            decoded_xsrf = urllib.parse.unquote(RAW_XSRF_TOKEN)
+            
+            # A. Get Token
+            token_resp = api_request.post(
+                "https://gr.erome.com/user/upload/token",
+                headers={
+                    "X-Requested-With": "XMLHttpRequest",
+                    "X-XSRF-TOKEN": decoded_xsrf
+                }
+            )
+            
+            if not token_resp.ok:
+                raise Exception(f"API Token Failed: {token_resp.status} {token_resp.text()}")
+            
+            try: token = token_resp.json().get('token')
+            except: token = token_resp.text().strip().replace('"', '')
+            print(f"   ✓ Token: {token[:10]}...")
+
+            # B. Get Redirect URL (Edit URL)
+            # We must use context.request.get to follow the redirect logic properly
+            # Or manually construct it. Let's manually construct to avoid 302 handling issues in headless.
+            # Usually: https://www.erome.com/user/upload?token={token} -> 302 -> /a/xxxx/edit
+            
+            # We will use the PAGE to navigate to the token URL. 
+            # This is safer than API following redirects which might get blocked.
             
             page = context.new_page()
             if STEALTH_AVAILABLE: stealth_sync(page)
-
-            print(f"   Navigating to: {edit_url}")
-            page.goto(edit_url, timeout=60000)
-            page.wait_for_load_state('domcontentloaded')
+            
+            handshake_url = f"https://www.erome.com/user/upload?token={token}"
+            print(f"   Navigating to Handshake URL: {handshake_url}")
+            
+            page.goto(handshake_url, timeout=60000)
+            
+            # Wait for redirect to /edit
+            try:
+                page.wait_for_url("**/a/*/edit", timeout=30000)
+                print(f"   ✓ Landed on Edit Page: {page.url}")
+            except:
+                print("   ⚠️ Redirect slow or failed. Checking page content...")
+                if "login" in page.url:
+                    raise Exception("Cookies expired - redirected to login")
+            
             time.sleep(2)
-
-            # --- HANDLE POPUPS ---
             handle_popups(page)
-            time.sleep(1)
 
-            # --- TYPING TITLE (SAFE BRUTE FORCE) ---
+            # 5. Type Title (Safety Patch)
             print("   Typing Title...")
             new_title = row_data["title"]
-            
             try:
-                # 1. Visual Typing
                 title_box = page.locator("h1#title_editable")
                 title_box.click(force=True)
-                time.sleep(0.5)
-                page.keyboard.press("Control+A") 
-                page.keyboard.press("Backspace")
+                page.keyboard.press("Control+A"); page.keyboard.press("Backspace")
                 page.keyboard.type(new_title, delay=50)
+                page.keyboard.press("Tab")
                 
-                # 2. Trigger Events
-                page.keyboard.press("Tab") # Blur
-                
-                # 3. FORCE SET HIDDEN INPUT (Crucial Fix)
-                # This guarantees the server gets the title even if JS listeners fail
-                print("   Applying title safety patch...")
+                # FORCE HIDDEN INPUT
                 page.evaluate(f"""
-                    // Update visual
                     document.getElementById('title_editable').innerText = "{new_title}";
-                    // Update hidden input
-                    var hiddenInput = document.getElementById('album_title');
-                    if(hiddenInput) {{ hiddenInput.value = "{new_title}"; }}
+                    var h = document.getElementById('album_title');
+                    if(h) h.value = "{new_title}";
                 """)
-                time.sleep(1)
-                print(f"   ✓ Title set (Visual & Hidden Input)")
-
+                print(f"   ✓ Title set: {new_title}")
             except Exception as e:
-                print(f"   ⚠️ Error setting title: {e}")
+                print(f"   ⚠️ Title Error: {e}")
 
-            # --- UPLOAD ---
+            # 6. Upload
             print(f"   Uploading {len(downloaded_files)} files...")
             page.set_input_files('#add_more_file', downloaded_files)
             
-            print("   Waiting for processing...")
             try:
                 page.wait_for_function(
                     f"document.querySelectorAll('#medias .media-group').length >= {len(downloaded_files)}",
@@ -285,15 +258,13 @@ def upload_video_hybrid(row_data):
                 )
                 print("   ✓ Uploads processed")
             except:
-                print("   ⚠️ Timeout waiting for thumbnails (check screenshot)")
-                page.screenshot(path="upload_timeout.png")
+                print("   ⚠️ Upload timeout (proceeding)")
             
             time.sleep(5)
 
-            # --- TAGS ---
+            # 7. Tags
             tags = [t.strip() for t in row_data["tags"].split(",") if t.strip()]
             if tags:
-                print("   Adding Tags...")
                 tag_input = page.locator('#tag_input')
                 for tag in tags:
                     tag_input.fill(tag)
@@ -301,51 +272,45 @@ def upload_video_hybrid(row_data):
                     tag_input.press("Enter")
                     time.sleep(0.5)
 
-            # --- PUBLISHING ---
-            print("   Publishing (Waiting 5s)...")
-            time.sleep(5) 
-            
+            # 8. Publish
+            print("   Publishing...")
+            time.sleep(3)
             save_btn = page.locator("div#done_box a.btn.btn-pink")
             save_btn.scroll_into_view_if_needed()
-            
-            print("   Clicking SAVE...")
             save_btn.click(force=True)
             
-            print("   Waiting for redirection...")
-            start_time = time.time()
+            start = time.time()
             success = False
-            
-            while time.time() - start_time < 60:
-                current_url = page.url
-                if "/edit" not in current_url and "/a/" in current_url:
-                    print(f"   ✓ REDIRECT DETECTED: {current_url}")
+            while time.time() - start < 60:
+                if "/edit" not in page.url and "/a/" in page.url:
                     success = True
                     break
-                
                 if page.locator(".alert-danger").is_visible():
-                    err = page.locator(".alert-danger").text_content()
-                    print(f"   ✗ Error on page: {err}")
+                    print(f"   ✗ Error: {page.locator('.alert-danger').text_content()}")
                     break
-                    
                 time.sleep(1)
-                
-            if not success:
-                print(f"   ✗ Failed to redirect. Stuck on: {page.url}")
-                page.screenshot(path="stuck_on_publish.png")
-                raise Exception("Publish click didn't redirect")
             
-            print(f"✓ SUCCESS! Published: {page.url}")
+            if not success:
+                page.screenshot(path="failed_publish.png")
+                raise Exception("Publish failed or timed out")
+            
+            print(f"✓ PUBLISHED: {page.url}")
             return True
 
     except Exception as e:
-        print(f"✗ Process Failed: {e}")
+        print(f"✗ Failed: {e}")
         raise e
     finally:
         for f in downloaded_files:
             if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
-    print(f"=== Hybrid Brave Uploader Starting at {datetime.now()} ===")
+    print(f"=== Erome Uploader v3 (Brave API) Starting {datetime.now()} ===")
+    
+    # Check dependencies
+    if not STEALTH_AVAILABLE:
+        print("!!! WARNING: playwright-stealth is missing. Install it to avoid bans !!!")
+
     pending = get_first_pending_row()
     if not pending:
         print("No pending videos.")
@@ -355,10 +320,10 @@ if __name__ == "__main__":
     print(f"Processing Row {row_num}: {data.get('title')}")
     
     try:
-        upload_video_hybrid(data)
+        upload_video_full(data)
         update_sheet_row(row_num, "posted", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     except Exception as e:
-        print(f"FATAL ERROR: {e}")
-        try: update_sheet_row(row_num, f"error: {str(e)[:50]}", datetime.now().strftime("%Y-%m-%d"))
+        print(f"FATAL: {e}")
+        try: update_sheet_row(row_num, f"error: {str(e)[:100]}", datetime.now().strftime("%Y-%m-%d"))
         except: pass
         exit(1)
