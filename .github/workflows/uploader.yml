@@ -1,74 +1,51 @@
-name: Video Uploader
+name: Erome Uploader
 
 on:
-  # Manual trigger
-  workflow_dispatch:
-
-  # Scheduled runs - every 6 hours
+  workflow_dispatch:  # Allows manual button click to run
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Runs every 6 hours
 
 jobs:
-  upload:
+  run_uploader:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
+          python-version: '3.10'
 
       - name: Install Brave Browser
         run: |
-          sudo apt install curl -y
           sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-          sudo apt update
-          sudo apt install brave-browser -y
-          which brave-browser
+          sudo apt-get update
+          sudo apt-get install -y brave-browser
 
-      - name: Run uploader
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium  # Still needed for underlying drivers
+
+      - name: Run Uploader Script
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
-          WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
-          TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
           PROXY_ENABLED: true
-          PROXY_HOST: p.webshare.io
-          PROXY_PORT: 80
-          PROXY_USERNAME: mhcbvnkx-rotate
-          PROXY_PASSWORD: wsramyu1qzh0
-        run: python upload_videos.py
+          PROXY_HOST: ${{ secrets.PROXY_HOST }}
+          PROXY_PORT: ${{ secrets.PROXY_PORT }}
+          PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
+          PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
+          # If you moved cookies to secrets, add them here too
+        run: python uploader.py
 
-      - name: Upload Playwright traces
-        if: always()
+      - name: Upload Screenshots on Failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-${{ github.run_number }}
-          path: /tmp/traces/
-          retention-days: 7
-
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{ github.run_number }}
-          path: |
-            screenshot_*.png
-            captcha.png
-            *.png
-          retention-days: 7
-          if-no-files-found: ignore
+          name: error-screenshots
+          path: "*.png"
