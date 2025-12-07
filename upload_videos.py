@@ -207,6 +207,13 @@ def _upload_video_impl(row_data, downloaded_files):
         )
 
         page = browser.new_page()
+        
+        # Start tracing
+        trace_dir = "/tmp/traces"
+        os.makedirs(trace_dir, exist_ok=True)
+        trace_file = os.path.join(trace_dir, f"trace_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
+        browser.tracing.start(screenshots=True, snapshots=True, sources=True)
+        print(f"✓ Started Playwright trace: {trace_file}")
         page.goto('https://www.erome.com/explore', wait_until='networkidle')
         time.sleep(1)
         handle_age_overlay(page)
@@ -418,6 +425,10 @@ def _upload_video_impl(row_data, downloaded_files):
             print("✓ Successfully redirected to album page")
         else:
             print(f"⚠️ Unexpected URL pattern: {final_url}")
+        
+        # Stop tracing and save
+        browser.tracing.stop(path=trace_file)
+        print(f"✓ Trace saved to: {trace_file}")
         
         browser.close()
         return True

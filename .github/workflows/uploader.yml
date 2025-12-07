@@ -29,16 +29,16 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
-      - name: Install XVFB and Brave Browser
+      - name: Install Brave Browser
         run: |
-          sudo apt install xvfb curl -y
+          sudo apt install curl -y
           sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
           sudo apt update
           sudo apt install brave-browser -y
           which brave-browser
 
-      - name: Run uploader with XVFB
+      - name: Run uploader
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
@@ -46,8 +46,23 @@ jobs:
           WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
           WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
           TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
-          DISPLAY: :99
-        run: |
-          Xvfb :99 -screen 0 1920x1080x24 &
-          sleep 2
-          python upload_videos.py
+        run: python upload_videos.py
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_number }}
+          path: /tmp/traces/
+          retention-days: 7
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: |
+            captcha.png
+            login_failed.png
+          retention-days: 7
+          if-no-files-found: ignore
