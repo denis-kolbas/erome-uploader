@@ -208,56 +208,78 @@ def _upload_video_impl(row_data, downloaded_files):
         
         # If upload button not visible, we need to login
         if upload_button_check.count() == 0:
-            print("Not logged in. Navigating to login page...")
-            page.goto('https://www.erome.com/user/login', wait_until='networkidle')
-            time.sleep(2)
-            print(f"✓ On login page: {page.url}")
-            
-            print("Logging in...")
             username = os.getenv('WEBSITE_USERNAME')
             password = os.getenv('WEBSITE_PASSWORD')
             
-            print(f"  Filling username: {username[:3]}***")
-            page.fill('input#email.form-control', username)
-            time.sleep(0.5)
+            max_login_attempts = 3
+            login_successful = False
             
-            print(f"  Filling password: ***")
-            page.fill('input#password.form-control', password)
-            time.sleep(0.5)
-            
-            print("  Solving captcha...")
-            captcha_solution = solve_captcha(page)
-            if captcha_solution:
+            for attempt in range(1, max_login_attempts + 1):
+                print(f"\n{'='*50}")
+                print(f"Login attempt {attempt}/{max_login_attempts}")
+                print(f"{'='*50}")
+                
+                print("Navigating to login page...")
+                page.goto('https://www.erome.com/user/login', wait_until='networkidle')
+                time.sleep(2)
+                print(f"✓ On login page: {page.url}")
+                
+                print(f"  Filling username: {username[:3]}***")
+                page.fill('input#email.form-control', username)
+                time.sleep(0.5)
+                
+                print(f"  Filling password: ***")
+                page.fill('input#password.form-control', password)
+                time.sleep(0.5)
+                
+                print("  Solving captcha...")
+                captcha_solution = solve_captcha(page)
+                if not captcha_solution:
+                    print(f"  ✗ Captcha solving failed on attempt {attempt}")
+                    if attempt < max_login_attempts:
+                        print("  Retrying...")
+                        continue
+                    else:
+                        raise Exception("Captcha solving failed after all attempts")
+                
                 print(f"  Filling captcha: {captcha_solution}")
                 page.fill('input[name="captcha"]', captcha_solution)
                 time.sleep(0.5)
-            else:
-                raise Exception("Captcha solving failed")
+                
+                print("  Clicking submit button...")
+                page.locator('button.btn.btn-pink[type="submit"]').click()
+                print("  Waiting for page to load...")
+                page.wait_for_load_state('networkidle')
+                time.sleep(3)
+                
+                print(f"  After login URL: {page.url}")
+                
+                # Check for error messages
+                error_msg = page.locator('.alert-danger, .error').first
+                if error_msg.count() > 0:
+                    error_text = error_msg.text_content()
+                    print(f"  ✗ Error message on page: {error_text}")
+                
+                # Verify login was successful
+                upload_btn_count = page.locator("a#upload-album, a[href*='/upload']").count()
+                print(f"  Upload button count: {upload_btn_count}")
+                
+                if upload_btn_count > 0:
+                    login_successful = True
+                    print(f"✓ Login successful on attempt {attempt}!")
+                    break
+                else:
+                    print(f"  ✗ Login failed on attempt {attempt}")
+                    if attempt < max_login_attempts:
+                        print("  Captcha was likely wrong. Retrying with new captcha...")
+                        time.sleep(2)
+                    else:
+                        # Take screenshot on final failure
+                        page.screenshot(path='login_failed.png')
+                        print("  ✗ Screenshot saved to login_failed.png")
             
-            print("  Clicking submit button...")
-            page.locator('button.btn.btn-pink[type="submit"]').click()
-            print("  Waiting for page to load...")
-            page.wait_for_load_state('networkidle')
-            time.sleep(3)
-            
-            print(f"  After login URL: {page.url}")
-            
-            # Check for error messages
-            error_msg = page.locator('.alert-danger, .error').first
-            if error_msg.count() > 0:
-                error_text = error_msg.text_content()
-                print(f"  ✗ Error message on page: {error_text}")
-            
-            # Verify login was successful
-            upload_btn_count = page.locator("a#upload-album, a[href*='/upload']").count()
-            print(f"  Upload button count: {upload_btn_count}")
-            
-            if upload_btn_count == 0:
-                # Take screenshot for debugging
-                page.screenshot(path='login_failed.png')
-                print("  ✗ Screenshot saved to login_failed.png")
-                raise Exception("Login failed - upload button not visible after login")
-            print("✓ Login successful!")
+            if not login_successful:
+                raise Exception(f"Login failed after {max_login_attempts} attempts")
         else:
             print("✓ Already logged in")
 
