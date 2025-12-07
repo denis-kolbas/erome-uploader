@@ -150,8 +150,8 @@ def _upload_video_impl(row_data, downloaded_files):
         browser_args = ["--disable-popup-blocking","--disable-blink-features=AutomationControlled"]
         user_data_dir = "/tmp/chrome-profile"
         
-        # Use headless mode in production (Railway), headed locally
-        is_production = os.getenv('RAILWAY_ENVIRONMENT') is not None
+        # Use headless mode in production (Railway/Render), headed locally
+        is_production = os.getenv('RAILWAY_ENVIRONMENT') is not None or os.getenv('RENDER_ENVIRONMENT') is not None
         headless_mode = is_production
         
         if brave_path:
