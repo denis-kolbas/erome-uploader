@@ -1,7 +1,5 @@
-playwright
-playwright-stealth==1.0.6
-requests
 python-dotenv
+playwright
+2captcha-python
 google-api-python-client
-google-auth
 google-auth-oauthlib

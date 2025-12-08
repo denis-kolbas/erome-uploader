@@ -1,51 +1,49 @@
-name: Erome Uploader
+name: Video Uploader
 
 on:
-  workflow_dispatch:  # Allows manual button click to run
+  # Manual trigger
+  workflow_dispatch:
+
+  # Scheduled runs - every 6 hours
   schedule:
-    - cron: '0 */6 * * *'  # Runs every 6 hours
+    - cron: '0 */6 * * *'
 
 jobs:
-  run_uploader:
+  upload:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
 
       - name: Install Brave Browser
         run: |
+          sudo apt install curl -y
           sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-          sudo apt-get update
-          sudo apt-get install -y brave-browser
+          sudo apt update
+          sudo apt install brave-browser -y
+          which brave-browser
 
-      - name: Install Dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium  # Still needed for underlying drivers
-
-      - name: Run Uploader Script
+      - name: Run uploader
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          PROXY_ENABLED: true
-          PROXY_HOST: ${{ secrets.PROXY_HOST }}
-          PROXY_PORT: ${{ secrets.PROXY_PORT }}
-          PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
-          PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
-          # If you moved cookies to secrets, add them here too
-        run: python uploader.py
-
-      - name: Upload Screenshots on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: error-screenshots
-          path: "*.png"
+          WEBSITE_USERNAME: ${{ secrets.WEBSITE_USERNAME }}
+          WEBSITE_PASSWORD: ${{ secrets.WEBSITE_PASSWORD }}
+          TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
+        run: python upload_videos.py
