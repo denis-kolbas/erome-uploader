@@ -201,13 +201,17 @@ def _upload_video_impl(row_data, downloaded_files):
         page.goto('https://www.erome.com/explore', wait_until='networkidle')
         time.sleep(1)
         handle_age_overlay(page)
-        time.sleep(1)
+        time.sleep(2)  # Give page more time to load
 
         # Check if logged in by looking for upload button
         upload_button_check = page.locator("a#upload-album, a[href*='/upload']")
+        is_logged_in = upload_button_check.count() > 0
+        
+        print(f"Login check: Upload button found = {is_logged_in}")
+        print(f"Current URL: {page.url}")
         
         # If upload button not visible, we need to login
-        if upload_button_check.count() == 0:
+        if not is_logged_in:
             print("Not logged in. Navigating to login page...")
             page.goto('https://www.erome.com/user/login', wait_until='networkidle')
             time.sleep(1)
